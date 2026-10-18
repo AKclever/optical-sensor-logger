@@ -1,0 +1,11 @@
+# Build products
+/optlog
+*.o
+*.d
+
+# Generated readings
+*.csv
+
+# Editor files
+*~
+*.swp
