@@ -1,64 +1,39 @@
-# Start here
+# Following the code
 
-This is a learning scaffold, not a completed assignment. ChatGPT supplied the
-structure, build rules, interfaces, and TODO hints. You implement the logic.
-The source/header files use the MIT SPDX license identifier.
+Start with the build and usage examples in [README.md](README.md). This file is a guide to the implementation rather than a list of unfinished exercises.
 
-## Build the scaffold
+1. In `main.c`, follow the options first. Invalid arguments are rejected before starting the child or opening the output file.
+2. Follow the two pipe descriptors across `fork()`. The child keeps the writing end and the parent keeps the reading end. Closing the unused ends is important: the logger needs EOF when the sensor stops.
+3. In `sensor.c`, look at the stop flag, reading format, write loop, and interrupted sleep handling.
+4. In `logger.c`, follow one line from `fgets()` through validation and into the CSV file. The duplicated input descriptor lets the caller keep ownership of its original descriptor.
+5. Return to `main.c` for shutdown. The parent forwards SIGINT/SIGTERM to the child and continues draining the pipe before calling `waitpid()`. Stop signals are blocked during setup so neither process handles them before it is ready.
 
-On Linux with a C compiler and Make installed:
+ChatGPT helped with the initial scaffold and the later shutdown, flush-check, documentation, and verification changes. The relevant source comments and README describe that assistance.
+
+## Try it
 
 ```sh
 make
-./optlog
-make clean
+./optlog --help
+./optlog --interval 100 --output test.csv
+# Press Ctrl+C, then inspect the file:
+head test.csv
+./optlog --interval 0
+./optlog --output /a-directory-that-does-not-exist/readings.csv
+./optlog --output /dev/full
 ```
 
-At this stage the program intentionally prints “Not implemented yet” to stderr
-and exits with failure. The sensor and logger functions are unimplemented stubs
-that return -1 with errno set to ENOSYS. Building successfully does not mean
-the sensor logger works yet. Even --help remains your first exercise.
+Help should succeed. Invalid arguments and output failures should print diagnostics to stderr and return a nonzero status. Check the previous command's status with `echo $?`.
 
-## What each file is for
+To check a signal sent only to the parent:
 
-| File | Your work |
-| --- | --- |
-| main.c | Arguments, pipe/fork, signals, descriptor ownership, waitpid, cleanup |
-| sensor.c / sensor.h | Simulated readings and timed writes to the pipe |
-| logger.c / logger.h | Receive records, validate them, and write CSV |
-| Makefile | Build, clean, and optional clang-format commands |
-| .gitignore | Keep binaries, object files, and generated readings out of Git |
+```sh
+./optlog --interval 100 --output signal-test.csv &
+logger_pid=$!
+sleep 1
+kill -TERM "$logger_pid"
+wait "$logger_pid"
+echo $?
+```
 
-The headers propose small interfaces; change them as you learn. The `(void)`
-lines only suppress unused-parameter warnings while the functions are empty.
-Remove them when you use those parameters.
-
-## Suggested learning order
-
-1. Implement --help and argument validation. Reject zero, negative, overflowing,
-   and malformed sample intervals. Decide what to do with an existing CSV file.
-2. Generate a single simulated reading before adding a timed loop. Pick and
-   document timestamp units and the range of arbitrary intensity values.
-3. Create a pipe and fork. Send one record, close the write end, receive it,
-   and wait for the child. Draw which process owns each descriptor.
-4. Save received records to CSV. Try multiple records and incomplete lines.
-5. Add sampling intervals and clean signal-driven shutdown. Avoid doing file
-   I/O in a signal handler; a sig_atomic_t flag is one possible starting point.
-   Think about blocking reads/sleeps and how shutdown wakes them.
-6. Handle failure paths: missing output directory, sensor exits, reader closes,
-   interrupted system calls, write/flush failures. Reap the child on errors too.
-7. Run make format (requires clang-format), update README with actual usage,
-   tested Linux distribution, and limitations. Keep AI assistance comments.
-
-Keep one intensity channel. No glucose estimation, threads, sockets, plotting,
-or optical signal processing is needed. poll-based timeouts are optional later.
-
-## Manual checks once implemented
-
-- --help succeeds; invalid arguments fail with diagnostics on stderr.
-- CSV has a header and complete readings at roughly the chosen interval.
-- Ctrl+C leaves a readable CSV and no surviving or zombie child process.
-- A bad output path fails without leaving the simulator running.
-- EOF and a closed pipe do not cause a busy loop or a hung parent.
-
-Before submission, replace proposal-only README text with what actually works.
+This should finish with status 0 and a readable CSV. Repeat with `kill -INT` to check SIGINT. Neither test should leave the sensor child running.
